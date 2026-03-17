@@ -49,9 +49,13 @@ def search_monthly(sb: SB, city: str, state: str) -> list[dict]:
     url = f"https://www.parkwhiz.com/p/{city}-{state}-monthly-parking/"
 
     sb.activate_cdp_mode(url)
-    sb.sleep(3)
+    sb.sleep(6)
 
-    soup = BeautifulSoup(sb.get_page_source(), "html.parser")
+    page_source = sb.get_page_source()
+    with open("parkwhiz_monthly_source.html", "w") as f:
+        f.write(page_source)
+
+    soup = BeautifulSoup(page_source, "html.parser")
     listings = []
     for container in soup.select("div.listing-container"):
         listing = {
@@ -122,6 +126,7 @@ if __name__ == "__main__":
         for listing in hourly:
             print(listing)
 
+    with SB(uc=True, test=True) as sb:
         monthly = search_monthly(sb, city="san-francisco", state="ca")
         print(f"Monthly: {len(monthly)} listings")
         for listing in monthly:
