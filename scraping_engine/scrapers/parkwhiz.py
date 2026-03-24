@@ -19,10 +19,22 @@ def search_hourly(sb: SB, city: str, state: str, start: datetime, end: datetime)
         offset = dt.strftime("%z")
         return dt.strftime("%Y-%m-%dT%H:%M:%S") + offset[:3] + ":" + offset[3:]
 
-    url = f"https://www.parkwhiz.com/p/{city}-{state}-parking/map/?{urlencode({'start': fmt(start), 'end': fmt(end)})}"
+    url = f"https://www.parkwhiz.com/p/{city}-{state}-parking/map/"
+    print(f"URL: {url}")
 
     sb.activate_cdp_mode(url)
     sb.sleep(3)
+
+    # Dismiss cookie consent modal if present, then zoom out
+    try:
+        sb.cdp.click("div.gpc-modal div.btn-modal:nth-child(2)")
+        sb.sleep(1)
+    except Exception:
+        pass
+    for _ in range(3):
+        sb.cdp.click("button.mapboxgl-ctrl-zoom-out")
+        sb.sleep(0.5)
+    sb.sleep(1)
 
     soup = BeautifulSoup(sb.get_page_source(), "html.parser")
     listings = []
@@ -50,6 +62,17 @@ def search_monthly(sb: SB, city: str, state: str) -> list[dict]:
 
     sb.activate_cdp_mode(url)
     sb.sleep(6)
+
+    # Dismiss cookie consent modal if present, then zoom out
+    try:
+        sb.cdp.click("div.gpc-modal div.btn-modal:nth-child(2)")
+        sb.sleep(1)
+    except Exception:
+        pass
+    for _ in range(3):
+        sb.cdp.click("button.mapboxgl-ctrl-zoom-out")
+        sb.sleep(0.5)
+    sb.sleep(1)
 
     page_source = sb.get_page_source()
     with open("parkwhiz_monthly_source.html", "w") as f:
