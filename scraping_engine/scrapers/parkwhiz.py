@@ -31,9 +31,14 @@ def search_hourly(sb: SB, city: str, state: str, start: datetime, end: datetime)
         sb.sleep(1)
     except Exception:
         pass
-    for _ in range(3):
-        sb.cdp.click("button.mapboxgl-ctrl-zoom-out")
-        sb.sleep(0.5)
+    try:
+        for _ in range(3):
+            sb.cdp.click("button.mapboxgl-ctrl-zoom-out")
+            sb.sleep(0.5)
+    except Exception:
+        with open(f"debug_{city}.html", "w") as f:
+            f.write(sb.get_page_source())
+        print(f"Zoom button not found for {city}, saved debug_{city}.html")
     sb.sleep(1)
 
     soup = BeautifulSoup(sb.get_page_source(), "html.parser")
