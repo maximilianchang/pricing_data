@@ -10,3 +10,4 @@ scraping_engine/parkwhiz_monthly_source.html
 .gitignore
 .gitignore
 scraping_engine/scrapers/parkwhiz_monthly_source.html
+**/*.html

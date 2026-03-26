@@ -1,15 +1,15 @@
 from datetime import datetime, timezone, timedelta
 from urllib.parse import urlencode
-from seleniumbase import SB
 from bs4 import BeautifulSoup
+from playwright.sync_api import Page
 
 
-def search_hourly(sb: SB, city: str, state: str, start: datetime, end: datetime) -> list[dict]:
+def search_hourly(page: Page, city: str, state: str, start: datetime, end: datetime) -> list[dict]:
     """
     Scrape hourly parking listings from ParkWhiz.
 
     Args:
-        sb:    Active SeleniumBase instance
+        page:  Playwright page instance
         city:  City name, hyphenated (e.g. "san-francisco")
         state: Two-letter state code (e.g. "ca")
         start: Timezone-aware start datetime
@@ -19,29 +19,30 @@ def search_hourly(sb: SB, city: str, state: str, start: datetime, end: datetime)
         offset = dt.strftime("%z")
         return dt.strftime("%Y-%m-%dT%H:%M:%S") + offset[:3] + ":" + offset[3:]
 
-    url = f"https://www.parkwhiz.com/p/{city}-{state}-parking/map/"
+    url = f"https://www.parkwhiz.com/p/{city}-{state}-parking/map/?{urlencode({'start': fmt(start), 'end': fmt(end)})}"
     print(f"URL: {url}")
 
-    sb.activate_cdp_mode(url)
-    sb.sleep(3)
+    page.goto(url, wait_until="domcontentloaded")
 
-    # Dismiss cookie consent modal if present, then zoom out
+    # Dismiss cookie consent modal if present
     try:
-        sb.cdp.click("div.gpc-modal div.btn-modal:nth-child(2)")
-        sb.sleep(1)
+        page.locator("div.gpc-modal div.btn-modal").nth(1).click(timeout=5000)
+        page.wait_for_timeout(1000)
     except Exception:
         pass
-    try:
-        for _ in range(3):
-            sb.cdp.click("button.mapboxgl-ctrl-zoom-out")
-            sb.sleep(0.5)
-    except Exception:
-        with open(f"debug_{city}.html", "w") as f:
-            f.write(sb.get_page_source())
-        print(f"Zoom button not found for {city}, saved debug_{city}.html")
-    sb.sleep(1)
 
-    soup = BeautifulSoup(sb.get_page_source(), "html.parser")
+    # Zoom out to render more listings
+    page.wait_for_selector("button.mapboxgl-ctrl-zoom-out", timeout=10000)
+    for _ in range(3):
+        page.click("button.mapboxgl-ctrl-zoom-out")
+        page.wait_for_timeout(500)
+    page.wait_for_timeout(1000)
+
+    page_source = page.content()
+    with open(f"parkwhiz_hourly_{city}.html", "w") as f:
+        f.write(page_source)
+
+    soup = BeautifulSoup(page_source, "html.parser")
     listings = []
     for container in soup.select("div.listing-container"):
         listing = {
@@ -54,33 +55,35 @@ def search_hourly(sb: SB, city: str, state: str, start: datetime, end: datetime)
     return listings
 
 
-def search_monthly(sb: SB, city: str, state: str) -> list[dict]:
+def search_monthly(page: Page, city: str, state: str) -> list[dict]:
     """
     Scrape monthly parking listings from ParkWhiz.
 
     Args:
-        sb:    Active SeleniumBase instance
+        page:  Playwright page instance
         city:  City name, hyphenated (e.g. "san-francisco")
         state: Two-letter state code (e.g. "ca")
     """
     url = f"https://www.parkwhiz.com/p/{city}-{state}-monthly-parking/"
 
-    sb.activate_cdp_mode(url)
-    sb.sleep(6)
+    page.goto(url, wait_until="domcontentloaded")
 
-    # Dismiss cookie consent modal if present, then zoom out
+    # Dismiss cookie consent modal if present
     try:
-        sb.cdp.click("div.gpc-modal div.btn-modal:nth-child(2)")
-        sb.sleep(1)
+        page.locator("div.gpc-modal div.btn-modal").nth(1).click(timeout=5000)
+        page.wait_for_timeout(1000)
     except Exception:
         pass
-    for _ in range(3):
-        sb.cdp.click("button.mapboxgl-ctrl-zoom-out")
-        sb.sleep(0.5)
-    sb.sleep(1)
 
-    page_source = sb.get_page_source()
-    with open("parkwhiz_monthly_source.html", "w") as f:
+    # Zoom out to render more listings
+    page.wait_for_selector("button.mapboxgl-ctrl-zoom-out", timeout=10000)
+    for _ in range(3):
+        page.click("button.mapboxgl-ctrl-zoom-out")
+        page.wait_for_timeout(500)
+    page.wait_for_timeout(1000)
+
+    page_source = page.content()
+    with open(f"parkwhiz_monthly_{city}.html", "w") as f:
         f.write(page_source)
 
     soup = BeautifulSoup(page_source, "html.parser")
@@ -140,22 +143,29 @@ def _text(el) -> str | None:
 
 
 if __name__ == "__main__":
+    from playwright.sync_api import sync_playwright
+
     tz = timezone(timedelta(hours=-8))  # PST
 
-    with SB(uc=True, test=True) as sb:
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+
+        now = datetime.now(tz).replace(minute=0, second=0, microsecond=0)
         hourly = search_hourly(
-            sb,
+            page,
             city="san-francisco",
             state="ca",
-            start=datetime(2026, 2, 25, 18, 0, 0, tzinfo=tz),
-            end=datetime(2026, 2, 25, 21, 0, 0, tzinfo=tz),
+            start=now,
+            end=now + timedelta(hours=3),
         )
         print(f"Hourly: {len(hourly)} listings")
         for listing in hourly:
             print(listing)
 
-    with SB(uc=True, test=True) as sb:
-        monthly = search_monthly(sb, city="san-francisco", state="ca")
+        monthly = search_monthly(page, city="san-francisco", state="ca")
         print(f"Monthly: {len(monthly)} listings")
         for listing in monthly:
             print(listing)
+
+        browser.close()

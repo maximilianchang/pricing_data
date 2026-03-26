@@ -1,6 +1,6 @@
 import argparse
 from datetime import datetime, timezone, timedelta
-from seleniumbase import SB
+from playwright.sync_api import sync_playwright
 from google.cloud import firestore
 from scrapers.parkwhiz import search_hourly, search_monthly
 
@@ -31,27 +31,33 @@ def run_hourly(db: firestore.Client, cities: list[dict]) -> None:
     today = datetime.now(PST).replace(hour=18, minute=0, second=0, microsecond=0)
     start = today
     end = today.replace(hour=21)
-    for city_data in cities:
-        city, state, location = city_data["city"], city_data["state"], city_data["location"]
-        try:
-            with SB(chromium_arg="--headless,--disable-gpu,--window-size=1024,768,--no-sandbox") as sb:
-                listings = search_hourly(sb, city=city, state=state, start=start, end=end)
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-gpu"])
+        page = browser.new_page()
+        for city_data in cities:
+            city, state, location = city_data["city"], city_data["state"], city_data["location"]
+            try:
+                listings = search_hourly(page, city=city, state=state, start=start, end=end)
                 print(f"[{location}] Hourly: {len(listings)} listings")
                 save(db, listings, "hourly", location)
-        except Exception as e:
-            print(f"[{location}] Hourly failed: {e}")
+            except Exception as e:
+                print(f"[{location}] Hourly failed: {e}")
+        browser.close()
 
 
 def run_monthly(db: firestore.Client, cities: list[dict]) -> None:
-    for city_data in cities:
-        city, state, location = city_data["city"], city_data["state"], city_data["location"]
-        try:
-            with SB(chromium_arg="--headless,--disable-gpu,--window-size=1024,768,--no-sandbox") as sb:
-                listings = search_monthly(sb, city=city, state=state)
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-gpu"])
+        page = browser.new_page()
+        for city_data in cities:
+            city, state, location = city_data["city"], city_data["state"], city_data["location"]
+            try:
+                listings = search_monthly(page, city=city, state=state)
                 print(f"[{location}] Monthly: {len(listings)} listings")
                 save(db, listings, "monthly", location)
-        except Exception as e:
-            print(f"[{location}] Monthly failed: {e}")
+            except Exception as e:
+                print(f"[{location}] Monthly failed: {e}")
+        browser.close()
 
 
 def main():
